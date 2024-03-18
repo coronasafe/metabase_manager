@@ -18,6 +18,8 @@ import {
   clearAllMapping,
 } from "./api";
 
+import React, { Fragment } from "react"; // needed for collapsible
+
 export default function Home() {
   const [sourceServers, setSourceServers] = useState<Server[]>([]);
   const [proceedLoading, setProceedLoading] = useState(false);
@@ -28,6 +30,170 @@ export default function Home() {
     value: 0,
     color: "bg-[#0c80cec5]",
   });
+
+  // Logic for card and path & status sort
+  const [sortField, setSortField] = useState<"name" | "path" | null>(null);
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+
+  const statusOrder = ["ready", "outdated", "in-sync", "excluded", "syncing", "success", "error"];
+  const [isSortedByStatus, setIsSortedByStatus] = useState(false);
+
+  // UPDATED TOGGLESORT FUNCTION TO ADDRESS STATUS SORTING ISSUE
+
+  const toggleSort = (field: "name" | "path" | "status") => {
+    if (field === "status") {
+      if (sortField !== "status") {
+        setSortField("status");
+        setSortDirection("asc");
+      } else {
+        setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+      }
+      setIsSortedByStatus(true);
+    } else {
+      setIsSortedByStatus(false);
+      if (sortField === field) {
+        setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+      } else {
+        setSortField(field);
+        setSortDirection("asc"); // Default to ascending when changing sort field
+      }
+    }
+  };
+
+  // ADDED TOGGLE FUNCTION FOR EXPAND/COLLAPSE ALL
+  const [expandAll, setExpandAll] = useState(false);
+
+  const toggleExpandAll = () => {
+    const newExpandAll = !expandAll;
+    setExpandAll(newExpandAll);
+  
+    if (newExpandAll) {
+      // If expanding all, set every destination and path to true.
+      const newExpandedDestinations = {};
+      const newExpandedPaths = {};
+      syncStatus.forEach((status) => {
+        const destinationString = formatHostUrl(status.destination_server.host);
+        newExpandedDestinations[destinationString] = true;
+        if (!newExpandedPaths[destinationString]) {
+          newExpandedPaths[destinationString] = {};
+        }
+        const pathString = status.collection_path?.join("/") || "Uncategorized";
+        newExpandedPaths[destinationString][pathString] = true;
+      });
+      setExpandedDestinations(newExpandedDestinations);
+      setExpandedPaths(newExpandedPaths);
+    } else {
+      // If collapsing all, reset expanded states to empty objects.
+      setExpandedDestinations({});
+      setExpandedPaths({});
+    }
+  }
+
+  const getSortedSyncStatus = () => {
+    return [...syncStatus].sort((a, b) => {
+      // Custom status sorting logic
+      if (isSortedByStatus) {
+        const orderA = statusOrder.indexOf(a.status);
+        const orderB = statusOrder.indexOf(b.status);
+        const comparisonResult = sortDirection === "asc" ? orderA - orderB : orderB - orderA;
+        if (comparisonResult !== 0) {
+          return comparisonResult;
+        }
+      }
+      // Existing sorting logic for name and path
+      if (sortField === "name") {
+        return sortDirection === "asc"
+          ? a.question.name.localeCompare(b.question.name)
+          : b.question.name.localeCompare(a.question.name);
+      } else if (sortField === "path") {
+        const pathA = a.collection_path?.join("/") || "";
+        const pathB = b.collection_path?.join("/") || "";
+        return sortDirection === "asc" ? pathA.localeCompare(pathB) : pathB.localeCompare(pathA);
+      }
+      // If no sorting is applied, return 0 to keep original order
+      return 0;
+    });
+  };
+
+  // UPDATED LOGIC FOR COLLAPSIBLE DESTINATION AND PATH SECTIONS
+  // Update groupByPath to include destination grouping
+  const groupByDestinationAndPath = (syncStatus) => {
+    const grouped = {};
+    syncStatus.forEach((status) => {
+      const destinationString = formatHostUrl(status.destination_server.host);
+      const pathString = status.collection_path?.join("/") || "Uncategorized";
+      if (!grouped[destinationString]) {
+        grouped[destinationString] = {};
+      }
+      if (!grouped[destinationString][pathString]) {
+        grouped[destinationString][pathString] = [];
+      }
+      grouped[destinationString][pathString].push(status);
+    });
+    return grouped;
+  };
+
+  // Update the state to track expanded destinations and paths
+  const [expandedDestinations, setExpandedDestinations] = useState({});
+  const [expandedPaths, setExpandedPaths] = useState({});
+
+  // Add toggle functions for destinations and paths
+// This function toggles the expand/collapse state of a specific destination.
+const toggleDestination = (destinationString) => {
+  setExpandedDestinations((prev) => {
+    const isCurrentlyExpanded = !!prev[destinationString];
+    // Toggle the destination's state.
+    const newExpandedDestinations = { ...prev, [destinationString]: !isCurrentlyExpanded };
+
+    // Collapse all subgroups if the destination is being collapsed.
+    if (!isCurrentlyExpanded) {
+      setExpandedPaths((prevPaths) => {
+        const newPaths = { ...prevPaths };
+        if (newPaths[destinationString]) {
+          Object.keys(newPaths[destinationString]).forEach((path) => {
+            newPaths[destinationString][path] = false;
+          });
+        }
+        return newPaths;
+      });
+    }
+
+    return newExpandedDestinations;
+  });
+};
+
+  const togglePath = (destinationString, pathString) => {
+    setExpandedPaths((prev) => {
+      // If the destination entry doesn't exist, create it.
+      if (!prev[destinationString]) {
+        prev[destinationString] = {};
+      }
+      
+      // Toggle the path's state.
+      const isCurrentlyExpanded = !!prev[destinationString][pathString];
+      return {
+        ...prev,
+        [destinationString]: {
+          ...prev[destinationString],
+          [pathString]: !isCurrentlyExpanded,
+        },
+      };
+    });
+  
+    // If a subgroup is toggled, we should no longer consider the "Expand All" state.
+    setExpandAll(false);
+  };
+
+  // Use the updated grouping function
+  // const syncStatusGroups = groupByDestinationAndPath(syncStatus);
+
+  // Sort the sync statuses before grouping
+  const sortedSyncStatus = getSortedSyncStatus();
+
+  // Group the sorted sync statuses by destination and path
+  const syncStatusGroups = groupByDestinationAndPath(sortedSyncStatus);
+
+  // END OF ADDED LOGIC
 
   const [settings, setSettings] = useState({
     refreshMapping: false,
@@ -1034,6 +1200,16 @@ export default function Home() {
             <table className="w-full text-sm text-left text-gray-500">
               <thead className="text-xs text-gray-700 uppercase bg-gray-50">
                 <tr>
+                  <th>
+                    <button
+                      onClick={toggleExpandAll}
+                      className="rounded-md bg-[#1e6091] px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#168aad] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:bg-gray-700 disabled:text-white"
+                    >
+                      {expandAll ? "Collapse All" : "Expand All"}
+                    </button>
+                  </th>
+                </tr>
+                <tr>
                   <th scope="col" className="p-4 ">
                     <div className="flex items-center">
                       <input
@@ -1064,95 +1240,146 @@ export default function Home() {
                   </th>
                   <th scope="col" className="py-3 px-2">
                     Card
+                    <button onClick={() => toggleSort("name")}>
+                      {sortField === "name" ? (sortDirection === "asc" ? "🔽" : "🔼") : "⇅"}
+                    </button>
                   </th>
                   <th scope="col" className="py-3 px-2">
                     Path
+                    <button onClick={() => toggleSort("path")}>
+                      {sortField === "path" ? (sortDirection === "asc" ? "🔽" : "🔼") : "⇅"}
+                    </button>
                   </th>
-                  <th scope="col" className="py-3 px-2">
-                    Status
+                  <th scope="col" className="py-3 px-2 flex justify-between items-center">
+                    <span>Status</span>
+                    <button onClick={() => toggleSort("status")} className="flex items-center">
+                      {isSortedByStatus ? (
+                        sortDirection === "asc" ? (
+                          <span>🔽</span> // Icon for ascending sort
+                        ) : (
+                          <span>🔼</span> // Icon for descending sort
+                        )
+                      ) : (
+                        <span>⇅</span> // Icon indicating sorting is available but not active
+                      )}
+                    </button>
                   </th>
                 </tr>
               </thead>
               <tbody>
-                {[...syncStatus]
-                  .sort((a, b) => {
-                    if (a.entity_type === "dashboard" && b.entity_type !== "dashboard") {
-                      return 1;
-                    } else if (a.entity_type !== "dashboard" && b.entity_type === "dashboard") {
-                      return -1;
-                    } else if (a.is_dependent && !b.is_dependent) {
-                      return 1;
-                    } else if (!a.is_dependent && b.is_dependent) {
-                      return -1;
-                    } else {
-                      return a.id.localeCompare(b.id);
-                    }
-                  })
-                  .map((status: SyncStatus, _index: number) => (
-                    <tr
-                      key={status.id + status.entity_type + (status.question.entity_id ?? status.question.id)}
-                      className="bg-white border-b hover:bg-gray-50"
-                      onClick={() => {
-                        if (status.is_excluded) return;
-                        setSyncStatus((syncStatus) =>
-                          syncStatus.map((s) => (s.id === status.id ? { ...s, checked: !s.checked } : s))
-                        );
-                      }}
-                    >
-                      <td className="w-4 p-4">
-                        <div className="flex items-center">
-                          <input
-                            id={`checkbox-table-${status.id}-${status.entity_type}-${
-                              status.question.entity_id ?? status.question.id
-                            }`}
-                            type="checkbox"
-                            checked={status.checked}
-                            disabled={status.is_excluded}
-                            onChange={(e) => {
-                              if (status.is_excluded) return;
-                              const checked = (e.target as HTMLInputElement).checked;
-                              setSyncStatus((syncStatus) =>
-                                syncStatus.map((s) => (s.id === status.id ? { ...s, checked } : s))
-                              );
-                            }}
-                            className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
-                          />
-                          <label
-                            htmlFor={`checkbox-table-${status.id}-${status.entity_type}-${
-                              status.question.entity_id ?? status.question.id
-                            }`}
-                            className="sr-only"
-                          >
-                            checkbox
-                          </label>
-                        </div>
-                      </td>
-                      <td scope="row" className="py-4 px-2 font-medium text-gray-900">
-                        {formatHostUrl(status.source_server.host)}
-                      </td>
-                      <td scope="row" className="py-4 px-2 font-medium text-gray-900">
-                        {formatHostUrl(status.destination_server.host)}
-                      </td>
-                      <td scope="row" className="py-4 px-2 font-medium text-gray-900">
-                        {status.question.name}{" "}
-                        <p className="text-xs text-gray-500">
-                          ({status.entity_type}) ({status.question.entity_id ?? status.question.id}){" "}
-                          {status.is_dependent && "(dependent)"} {status.is_excluded && "(excluded)"}
-                        </p>
-                      </td>
-                      <td scope="row" className="py-2 px-2 text-gray-800 text-[12px]">
-                        {status.collection_path?.join("/")}
-                      </td>
-                      <td
-                        scope="row"
-                        className={`px-2 py-4 font-medium capitalize ${
-                          status.is_excluded ? "text-orange-500" : getSyncStatusTextColor(status.status)
-                        } whitespace-nowrap`}
-                      >
-                        {status.is_excluded ? "Excluded" : status.status}
+                {Object.entries(syncStatusGroups).map(([destinationString, pathGroups], destinationIndex) => (
+                  <Fragment key={destinationString}>
+                    <tr className="bg-gray-200 cursor-pointer" onClick={() => toggleDestination(destinationString)}>
+                      <td colSpan={6} className="py-2 px-4 font-medium">
+                        {destinationString}{" "}
+                        {expandedDestinations[destinationString] ||
+                        (expandAll && expandedDestinations[destinationString] === undefined)
+                          ? "🔼"
+                          : "🔽"}
                       </td>
                     </tr>
-                  ))}
+                    {(expandedDestinations[destinationString] ||
+                      (expandAll && expandedDestinations[destinationString] === undefined)) &&
+                      Object.entries(pathGroups).map(([pathString, group], pathIndex) => (
+                        <Fragment key={pathString}>
+                          <tr
+                            className="bg-gray-100 cursor-pointer"
+                            onClick={() => togglePath(destinationString, pathString)}
+                          >
+                            <td className="pl-4 py-2">
+                              <input
+                                type="checkbox"
+                                checked={group.every((status) => status.checked)}
+                                onChange={(e) => {
+                                  e.stopPropagation(); // Prevent the path toggle when clicking the checkbox
+                                  const checked = e.target.checked;
+                                  setSyncStatus((currentSyncStatus) =>
+                                    currentSyncStatus.map((status) =>
+                                      group.includes(status) ? { ...status, checked } : status
+                                    )
+                                  );
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                            </td>
+                            <td colSpan={5} className="py-2 font-medium">
+                              <span onClick={(e) => e.stopPropagation()}>
+                                {pathString} ({group.length})
+                                {expandedPaths[destinationString]?.[pathString] || expandAll ? "🔼" : "🔽"}
+                              </span>
+                            </td>
+                          </tr>
+                          {(expandedPaths[destinationString]?.[pathString] ||
+                            (expandAll && expandedPaths[destinationString]?.[pathString] === undefined)) &&
+                            group.map((status: SyncStatus, _index: number) => (
+                              <tr
+                                key={status.id + status.entity_type + (status.question.entity_id ?? status.question.id)}
+                                className="bg-white border-b hover:bg-gray-50"
+                                onClick={() => {
+                                  if (status.is_excluded) return;
+                                  setSyncStatus((syncStatus) =>
+                                    syncStatus.map((s) => (s.id === status.id ? { ...s, checked: !s.checked } : s))
+                                  );
+                                }}
+                              >
+                                <td className="w-4 p-4">
+                                  <div className="flex items-center">
+                                    <input
+                                      id={`checkbox-table-${status.id}-${status.entity_type}-${
+                                        status.question.entity_id ?? status.question.id
+                                      }`}
+                                      type="checkbox"
+                                      checked={status.checked}
+                                      disabled={status.is_excluded}
+                                      onChange={(e) => {
+                                        if (status.is_excluded) return;
+                                        const checked = (e.target as HTMLInputElement).checked;
+                                        setSyncStatus((syncStatus) =>
+                                          syncStatus.map((s) => (s.id === status.id ? { ...s, checked } : s))
+                                        );
+                                      }}
+                                      className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                                    />
+                                    <label
+                                      htmlFor={`checkbox-table-${status.id}-${status.entity_type}-${
+                                        status.question.entity_id ?? status.question.id
+                                      }`}
+                                      className="sr-only"
+                                    >
+                                      checkbox
+                                    </label>
+                                  </div>
+                                </td>
+                                <td scope="row" className="py-4 px-2 font-medium text-gray-900">
+                                  {formatHostUrl(status.source_server.host)}
+                                </td>
+                                <td scope="row" className="py-4 px-2 font-medium text-gray-900">
+                                  {formatHostUrl(status.destination_server.host)}
+                                </td>
+                                <td scope="row" className="py-4 px-2 font-medium text-gray-900">
+                                  {status.question.name}{" "}
+                                  <p className="text-xs text-gray-500">
+                                    ({status.entity_type}) ({status.question.entity_id ?? status.question.id}){" "}
+                                    {status.is_dependent && "(dependent)"} {status.is_excluded && "(excluded)"}
+                                  </p>
+                                </td>
+                                <td scope="row" className="py-2 px-2 text-gray-800 text-[12px]">
+                                  {status.collection_path?.join("/")}
+                                </td>
+                                <td
+                                  scope="row"
+                                  className={`px-2 py-4 font-medium capitalize ${
+                                    status.is_excluded ? "text-orange-500" : getSyncStatusTextColor(status.status)
+                                  } whitespace-nowrap`}
+                                >
+                                  {status.is_excluded ? "Excluded" : status.status}
+                                </td>
+                              </tr>
+                            ))}
+                        </Fragment>
+                      ))}
+                  </Fragment>
+                ))}
               </tbody>
             </table>
           </div>
