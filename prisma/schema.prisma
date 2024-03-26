@@ -18,3 +18,16 @@ model SyncMapping {
   @@unique([sourceCardID, destinationCardID, destinationServer, type])
   @@unique([sourceCardID, destinationServer, type])
 }
+
+model SyncLog {
+  id              Int       @id @unique @default(autoincrement())
+  timestamp       DateTime  @default(now())
+  status          String
+  detailedRecords Json
+  sourceEmail     String
+  sourceHost      String
+  destinationHost String
+
+  @@unique([timestamp, sourceHost, destinationHost])
+}
+

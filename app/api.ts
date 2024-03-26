@@ -265,3 +265,40 @@ export async function clearAllMapping(hosts: string[]) {
     body: JSON.stringify({ hosts }),
   });
 }
+
+export async function createSyncLog(
+  status: string,
+  detailedRecords: any,
+  sourceEmail: string,
+  sourceHost: string,
+  destinationHost: string
+) {
+  return request("/database/logging", {
+    method: "POST",
+    body: JSON.stringify({ status, detailedRecords, sourceEmail, sourceHost, destinationHost }),
+  });
+}
+
+export async function updateSyncLog(
+  id: number,
+  status: string,
+  detailedRecords: any
+) {
+  return request("/database/logging", {
+    method: "PATCH",
+    body: JSON.stringify({ id, status, detailedRecords }),
+  });
+}
+
+export async function getAllSyncLogs() {
+  return request("/database/logging", {
+    method: "GET",
+  });
+}
+
+export async function getSyncLogById(id: number) {
+  return request("/database/logging", {
+    method: "GET",
+    params: { id },
+  });
+}
